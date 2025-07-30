@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聊天记录浏览器</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500&display=swap');
+        
+        :root {
+            --body-bg: #EDEDED;
+            --app-bg: #FFFFFF;
+            --header-bg: #F7F7F7;
+            --bubble-self-bg: #95EC69;
+            --bubble-other-bg: #FFFFFF;
+            --text-primary: #1A1A1A;
+            --text-secondary: #B2B2B2;
+            --border-color: #E0E0E0;
+            --accent-color: #07C160;
+            --sidebar-bg: #F7F7F7;
+            --sidebar-width: 250px;
+            --toolbar-width: 300px;
+        }
+
+        body {
+            background-color: var(--body-bg);
+            font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            -webkit-font-smoothing: antialiased;
+        }
+        #app-container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            background-color: var(--app-bg); 
+            min-height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.05); 
+        }
+        #file-selector-container { 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            align-items: center; 
+            text-align: center; 
+            padding: 60px 20px; 
+            flex-grow: 1; 
+        }
+        #file-selector-container h2 { 
+            font-size: 1.5em; 
+            color: var(--text-primary); 
+            font-weight: 500; 
+            margin-bottom: 30px; 
+        }
+        #file-input-label { 
+            background-color: var(--accent-color); 
+            color: white; 
+            padding: 14px 24px; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-size: 1.1em; 
+            font-weight: 500; 
+            transition: all 0.2s ease-in-out; 
+            box-shadow: 0 4px 10px rgba(7, 193, 96, 0.2); 
+        }
+        #file-input-label:hover { 
+            background-color: #06ad56; 
+            transform: translateY(-2px); 
+            box-shadow: 0 6px 15px rgba(7, 193, 96, 0.3); 
+        }
+        #file-input { display: none; }
+        #chat-header { 
+            text-align: center; 
+            padding: 12px; 
+            border-bottom: 1px solid var(--border-color); 
+            background-color: rgba(247, 247, 247, 0.8); 
+            position: sticky; 
+            top: 0; 
+            z-index: 100; 
+            backdrop-filter: blur(10px); 
+            display: none; 
+        }
+        #chat-title { 
+            margin: 0; 
+            font-size: 1em; 
+            font-weight: 500; 
+            color: var(--text-primary); 
+        }
+        #main-container {
+            display: flex;
+            flex-direction: row;
+            flex-grow: 1;
+            overflow: hidden;
+        }
+        #chat-container { 
+            padding: 20px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 10px; 
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-top: 50px;
+        }
+        
+        /* 时间分割线样式 */
+        .time-divider {
+            text-align: center;
+            margin: 15px 0;
+        }
+        .time-divider span {
+            background-color: #DADADA;
+            color: #FFFFFF;
+            font-size: 0.8em;
+            padding: 4px 10px;
+            border-radius: 12px;
+        }
+        .time-divider a {
+            background-color: #DADADA;
+            color: #FFFFFF;
+            font-size: 0.8em;
+            padding: 4px 10px;
+            border-radius: 12px;
+            text-decoration: none;
+        }
+
+        .message { display: flex; flex-direction: column; max-width: 75%; margin-top: 10px; }
+        .message-bubble { padding: 12px 16px; border-radius: 20px; line-line-height: 1.6; word-wrap: break-word; font-size: 16px; }
+        .sender-name { font-size: 0.8em; color: var(--text-secondary); margin-bottom: 6px; }
+        .other { align-self: flex-start; }
+        .other .message-bubble { background-color: var(--bubble-other-bg); border: 1px solid var(--border-color); border-top-left-radius: 4px; }
+        .other .sender-name { margin-left: 10px; }
+        .self { align-self: flex-end; }
+        .self .message-bubble { background-color: var(--bubble-self-bg); border-top-right-radius: 4px; }
+        .self .sender-name { display: none; }
+        .app-card { display: block; text-decoration: none; color: inherit; padding: 12px; border: 1px solid #eee; border-radius: 8px; background: #fafafa; }
+        .app-card-title { font-weight: 500; font-size: 1em; margin-bottom: 8px; }
+        .app-card-desc { font-size: 0.9em; color: var(--text-secondary); margin: 0; }
+        .placeholder-text { font-style: italic; color: var(--text-secondary); }
+        .highlight {
+            background-color: yellow;
+            font-weight: bold;
+        }
+        .message-highlight {
+            animation: highlight 2s;
+        }
+        @keyframes highlight {
+            0% { background-color: yellow; }
+            100% { background-color: transparent; }
+        }
+        
+        /* 工具栏样式 */
+        #toolbar-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            z-index: 1000;
+            font-size: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        
+        #toolbar-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+        }
+        
+        #toolbar {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: var(--toolbar-width);
+            height: 100vh;
+            background: white;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+            z-index: 999;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #toolbar.open {
+            transform: translateX(0);
+        }
+        
+        #toolbar-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        #toolbar-header h2 {
+            margin: 0;
+            font-size: 1.2em;
+            color: var(--text-primary);
+        }
+        
+        #toolbar-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background 0.2s;
+        }
+        
+        #toolbar-close:hover {
+            background: #f0f0f0;
+        }
+        
+        #toolbar-content {
+            padding: 20px;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+        
+        #search-container, #time-index-container {
+            margin-bottom: 30px;
+        }
+        
+        #search-container h3, #time-index-container h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 1em;
+            color: var(--text-primary);
+        }
+        
+        #search-box, #time-search-box {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 14px;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+        
+        #search-results, #time-search-results {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            margin-top: 10px;
+            display: none;
+        }
+        
+        .search-result, .time-search-result {
+            padding: 10px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .search-result:hover, .time-search-result:hover {
+            background-color: #f0f0f0;
+        }
+        
+        .search-result:last-child, .time-search-result:last-child {
+            border-bottom: none;
+        }
+        
+        #time-index {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+        }
+        
+        .time-link {
+            display: block;
+            padding: 10px;
+            text-decoration: none;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .time-link:hover {
+            background-color: #f0f0f0;
+        }
+        
+        .time-link:last-child {
+            border-bottom: none;
+        }
+        
+        /* 遮罩层 */
+        #overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.3);
+            z-index: 998;
+            display: none;
+        }
+        
+        #overlay.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="app-container">
+        <div id="file-selector-container">
+            <h2>欢迎使用聊天记录浏览器</h2>
+            <label for="file-input" id="file-input-label">选择一个 JSON 文件开始浏览</label>
+            <input type="file" id="file-input" accept=".json">
+        </div>
+        <div id="chat-header"><h1 id="chat-title"></h1></div>
+        <button id="toolbar-toggle">☰</button>
+        <div id="toolbar">
+            <div id="toolbar-header">
+                <h2>工具箱</h2>
+                <button id="toolbar-close">&times;</button>
+            </div>
+            <div id="toolbar-content">
+                <div id="search-container">
+                    <h3>搜索</h3>
+                    <input type="text" id="search-box" placeholder="搜索聊天记录...">
+                    <div id="search-results"></div>
+                </div>
+                <div id="time-index-container">
+                    <h3>时间索引</h3>
+                    <input type="text" id="time-search-box" placeholder="搜索日期...">
+                    <div id="time-search-results"></div>
+                    <div id="time-index"></div>
+                </div>
+            </div>
+        </div>
+        <div id="overlay"></div>
+        <div id="chat-container"></div>
+    </div>
+
+    <script>
+        // JavaScript V8.0 - 终极典藏版，增加智能时间戳
+        const parser = new DOMParser();
+        let allMessages = [];
+        let timeIndex = []; // 存储时间索引
+
+        function formatTimestamp(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            const h = String(date.getHours()).padStart(2, '0');
+            const min = String(date.getMinutes()).padStart(2, '0');
+            return `${y}-${m}-${d} ${h}:${min}`;
+        }
+
+        function formatDate(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        function parseXmlAndGetData(xmlString) {
+            try {
+                const cleanedXml = xmlString.replace(/\u0000/g, '').trim();
+                const xmlDoc = parser.parseFromString(cleanedXml, "text/xml");
+                const title = xmlDoc.querySelector("title")?.textContent.trim();
+                const desc = xmlDoc.querySelector("desc")?.textContent.trim();
+                return { title, desc };
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function renderMessage(msg) {
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.classList.add('message-bubble');
+            switch (msg.type) {
+                case 1:
+                    bubbleDiv.textContent = msg.content;
+                    break;
+                case 47:
+                    bubbleDiv.textContent = '[表情]';
+                    bubbleDiv.classList.add('placeholder-text');
+                    break;
+                case 49:
+                    const cardData = parseXmlAndGetData(msg.content);
+                    if (cardData && cardData.title) {
+                        bubbleDiv.style.padding = '0';
+                        bubbleDiv.style.background = 'none';
+                        bubbleDiv.style.border = 'none';
+                        bubbleDiv.innerHTML = `
+                            <div class="app-card">
+                                <div class="app-card-title">${cardData.title}</div>
+                                ${cardData.desc ? `<p class="app-card-desc">${cardData.desc}</p>` : ''}
+                            </div>
+                        `;
+                    } else {
+                        bubbleDiv.textContent = '[分享]';
+                        bubbleDiv.classList.add('placeholder-text');
+                    }
+                    break;
+                default:
+                    bubbleDiv.textContent = `[${msg.typeDesc || `未知类型: ${msg.type}`}]`;
+                    bubbleDiv.classList.add('placeholder-text');
+                    break;
+            }
+            return bubbleDiv;
+        }
+
+        // 构建时间索引
+        function buildTimeIndex(messages) {
+            timeIndex = [];
+            const dateMap = new Map();
+            
+            messages.forEach((msg, index) => {
+                const date = new Date(msg.time);
+                const dateStr = formatDate(date);
+                
+                if (!dateMap.has(dateStr)) {
+                    dateMap.set(dateStr, {
+                        date: dateStr,
+                        timestamp: date.getTime(),
+                        firstIndex: index,
+                        displayText: formatTimestamp(date)
+                    });
+                }
+            });
+            
+            // 转换为数组并按时间排序
+            timeIndex = Array.from(dateMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+            renderTimeIndex();
+        }
+
+        // 搜索时间索引
+        function searchTimeIndex(keyword) {
+            const resultsContainer = document.getElementById('time-search-results');
+            resultsContainer.innerHTML = '';
+            
+            if (!keyword) {
+                resultsContainer.style.display = 'none';
+                document.getElementById('time-index').style.display = 'block';
+                return;
+            }
+            
+            const results = timeIndex.filter(item => 
+                item.date.includes(keyword) || item.displayText.includes(keyword)
+            );
+            
+            if (results.length > 0) {
+                results.forEach(result => {
+                    const resultElement = document.createElement('div');
+                    resultElement.className = 'time-search-result';
+                    resultElement.textContent = result.displayText;
+                    resultElement.dataset.index = result.firstIndex;
+                    resultElement.addEventListener('click', (e) => {
+                        scrollToMessage(parseInt(e.target.dataset.index));
+                        toggleToolbar();
+                        resultsContainer.style.display = 'none';
+                        document.getElementById('time-index').style.display = 'block';
+                    });
+                    resultsContainer.appendChild(resultElement);
+                });
+                resultsContainer.style.display = 'block';
+                document.getElementById('time-index').style.display = 'none';
+            } else {
+                resultsContainer.style.display = 'none';
+                document.getElementById('time-index').style.display = 'block';
+            }
+        }
+
+        // 渲染时间索引
+        function renderTimeIndex() {
+            const timeIndexContainer = document.getElementById('time-index');
+            timeIndexContainer.innerHTML = '';
+            
+            timeIndex.forEach(item => {
+                const link = document.createElement('a');
+                link.href = '#';
+                link.className = 'time-link';
+                link.textContent = item.displayText;
+                link.dataset.index = item.firstIndex;
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    scrollToMessage(parseInt(e.target.dataset.index));
+                    toggleToolbar(); // 点击后关闭工具栏
+                });
+                timeIndexContainer.appendChild(link);
+            });
+        }
+
+        // 滚动到指定消息
+        function scrollToMessage(index) {
+            const messageElements = document.querySelectorAll('.message, .time-divider');
+            if (messageElements[index]) {
+                messageElements[index].scrollIntoView({ behavior: 'smooth' });
+            }
+        }
+
+        // 搜索功能
+        function searchMessages(keyword) {
+            const resultsContainer = document.getElementById('search-results');
+            resultsContainer.innerHTML = '';
+            
+            if (!keyword) {
+                resultsContainer.style.display = 'none';
+                return;
+            }
+            
+            const results = [];
+            allMessages.forEach((msg, index) => {
+                if (msg.content && msg.content.includes(keyword)) {
+                    results.push({ index, msg });
+                }
+            });
+            
+            if (results.length > 0) {
+                results.slice(0, 10).forEach(result => {
+                    const resultElement = document.createElement('div');
+                    resultElement.className = 'search-result';
+                    resultElement.textContent = result.msg.content.substring(0, 30) + (result.msg.content.length > 30 ? '...' : '');
+                    resultElement.addEventListener('click', () => {
+                        scrollToMessage(result.index);
+                        highlightMessage(result.index, keyword);
+                        resultsContainer.style.display = 'none';
+                        toggleToolbar(); // 点击后关闭工具栏
+                    });
+                    resultsContainer.appendChild(resultElement);
+                });
+                resultsContainer.style.display = 'block';
+            } else {
+                resultsContainer.style.display = 'none';
+            }
+        }
+
+        // 滚动到指定消息
+        function scrollToMessage(index, keyword) {
+            const messageElements = document.querySelectorAll('.message');
+            if (messageElements[index]) {
+                messageElements[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // 添加高亮效果
+                messageElements[index].classList.add('message-highlight');
+                setTimeout(() => {
+                    messageElements[index].classList.remove('message-highlight');
+                }, 2000);
+                
+                // 高亮关键词
+                if (keyword) {
+                    const bubble = messageElements[index].querySelector('.message-bubble');
+                    if (bubble) {
+                        const regex = new RegExp(`(${keyword})`, 'gi');
+                        bubble.innerHTML = bubble.textContent.replace(regex, '<span class="highlight">$1</span>');
+                        setTimeout(() => {
+                            clearHighlights();
+                        }, 2000);
+                    }
+                }
+            }
+        }
+
+        // 清除高亮
+        function clearHighlights() {
+            const highlights = document.querySelectorAll('.highlight');
+            highlights.forEach(span => {
+                const parent = span.parentNode;
+                parent.replaceChild(document.createTextNode(span.textContent), span);
+                parent.normalize();
+            });
+        }
+
+        // 切换工具栏显示/隐藏
+        function toggleToolbar() {
+            const toolbar = document.getElementById('toolbar');
+            const overlay = document.getElementById('overlay');
+            toolbar.classList.toggle('open');
+            overlay.classList.toggle('show');
+        }
+
+        document.getElementById('file-input').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const chatContainer = document.getElementById('chat-container');
+                const chatHeader = document.getElementById('chat-header');
+                const chatTitle = document.getElementById('chat-title');
+                const fileSelector = document.getElementById('file-selector-container');
+                try {
+                    const messages = JSON.parse(e.target.result);
+                    allMessages = messages; // 保存所有消息用于搜索
+                    fileSelector.style.display = 'none';
+                    chatHeader.style.display = 'block';
+                    
+                    // 修改标题显示逻辑，优先显示对方的名字
+                    let chatTitleText = '聊天记录';
+                    if (messages.length > 0) {
+                        // 尝试从消息中获取对方的名字
+                        for (let i = 0; i < messages.length; i++) {
+                            if (!messages[i].isSelf && messages[i].senderName) {
+                                chatTitleText = messages[i].senderName;
+                                break;
+                            }
+                        }
+                        // 如果没找到对方名字，则尝试使用talkerName
+                        if (chatTitleText === '聊天记录') {
+                            chatTitleText = messages[0].talkerName || '聊天记录';
+                        }
+                    } else {
+                        chatTitleText = '空的聊天记录';
+                    }
+                    chatTitle.textContent = chatTitleText;
+                    chatContainer.innerHTML = ''; 
+
+                    let lastTimestamp = null;
+                    const TIME_GAP = 5 * 60 * 1000; // 5分钟的毫秒数
+
+                    messages.forEach(msg => {
+                        const currentTimestamp = new Date(msg.time);
+                        
+                        // !!!!!! 智能时间戳的核心逻辑 !!!!!! 
+                        if (lastTimestamp === null || (currentTimestamp - lastTimestamp) > TIME_GAP) {
+                            const timeDivider = document.createElement('div');
+                            timeDivider.className = 'time-divider';
+                            timeDivider.innerHTML = `<a name="time-${currentTimestamp.getTime()}">${formatTimestamp(currentTimestamp)}</a>`;
+                            chatContainer.appendChild(timeDivider);
+                        }
+                        lastTimestamp = currentTimestamp;
+                        // !!!!!! 时间戳逻辑结束 !!!!!! 
+                        
+                        const messageDiv = document.createElement('div');
+                        messageDiv.classList.add('message');
+                        if (msg.isSelf) {
+                            messageDiv.classList.add('self');
+                        } else {
+                            messageDiv.classList.add('other');
+                            const senderNameDiv = document.createElement('div');
+                            senderNameDiv.classList.add('sender-name');
+                            senderNameDiv.textContent = msg.senderName;
+                            messageDiv.appendChild(senderNameDiv);
+                        }
+                        
+                        const bubbleDiv = renderMessage(msg);
+                        messageDiv.appendChild(bubbleDiv);
+
+                        chatContainer.appendChild(messageDiv);
+                    });
+                    
+                    // 构建时间索引
+                    buildTimeIndex(messages);
+                } catch (error) {
+                    alert(`文件解析失败！\n错误信息: ${error.message}`);
+                    fileSelector.style.display = 'flex';
+                    chatHeader.style.display = 'none';
+                    chatContainer.innerHTML = '';
+                }
+            };
+            reader.readAsText(file, 'UTF-8');
+        });
+
+        // 添加搜索框事件监听
+        document.getElementById('search-box').addEventListener('input', function(e) {
+            searchMessages(e.target.value);
+        });
+
+        // 添加工具栏切换按钮事件监听
+        document.getElementById('toolbar-toggle').addEventListener('click', toggleToolbar);
+        document.getElementById('toolbar-close').addEventListener('click', toggleToolbar);
+        
+        // 添加时间索引搜索框事件监听
+        document.getElementById('time-search-box').addEventListener('input', function(e) {
+            searchTimeIndex(e.target.value);
+        });
+        
+        // 点击遮罩层关闭工具栏
+        document.getElementById('overlay').addEventListener('click', toggleToolbar);
+
+        // 点击其他地方关闭搜索结果
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('#search-container')) {
+                document.getElementById('search-results').style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
