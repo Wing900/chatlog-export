@@ -23,3 +23,11 @@ go.work.sum
 
 # env file
 .env
+# 忽略所有导出的聊天记录数据
+*.json
+*.csv
+*.html
+
+# 忽略 chatlog 自动生成的工作目录
+/wxid_*/
+/chatlog_export/
