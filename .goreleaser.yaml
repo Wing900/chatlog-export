@@ -1,0 +1,90 @@
+# GoReleaser v2 配置
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: darwin-amd64
+    binary: chatlog
+    env:
+      - CGO_ENABLED=1
+      - CC=o64-clang
+      - CXX=o64-clang++
+    goos:
+      - darwin
+    goarch:
+      - amd64
+    ldflags:
+      - -s -w -X github.com/sjzar/chatlog/pkg/version.Version={{.Version}}
+
+  - id: darwin-arm64
+    binary: chatlog
+    env:
+      - CGO_ENABLED=1
+      - CC=oa64-clang
+      - CXX=oa64-clang++
+    goos:
+      - darwin
+    goarch:
+      - arm64
+    ldflags:
+      - -s -w -X github.com/sjzar/chatlog/pkg/version.Version={{.Version}}
+
+  - id: windows-amd64
+    binary: chatlog
+    env:
+      - CGO_ENABLED=1
+      - CC=x86_64-w64-mingw32-gcc
+      - CXX=x86_64-w64-mingw32-g++
+    goos:
+      - windows
+    goarch:
+      - amd64
+    ldflags:
+      - -s -w -X github.com/sjzar/chatlog/pkg/version.Version={{.Version}}
+
+  - id: windows-arm64
+    binary: chatlog
+    env:
+      - CGO_ENABLED=1
+      - CC=/llvm-mingw/bin/aarch64-w64-mingw32-gcc
+      - CXX=/llvm-mingw/bin/aarch64-w64-mingw32-g++
+    goos:
+      - windows
+    goarch:
+      - arm64
+    ldflags:
+      - -s -w -X github.com/sjzar/chatlog/pkg/version.Version={{.Version}}
+
+archives:
+  - id: default
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE
+      - README.md
+
+upx:
+  - enabled: "{{ .Env.ENABLE_UPX }}"
+    goos: [darwin, windows]
+    goarch: [amd64]
+    compress: best
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+# 配置 GitHub Release
+release:
+  draft: true
+  prerelease: auto
+  mode: replace
