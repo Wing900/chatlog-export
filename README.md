@@ -24,3 +24,7 @@
    - **使用方法：** 用浏览器打开它，然后选择你的 JSON 文件，即可像聊天软件一样查看记录。
 3. **图片预览**
    - **解决问题：** 聊天记录若要预览图片, 需要`python -m http.server 8000`启动服务器后, 浏览器输入localhost:8000后打开`chatbrowser.html`
+  
+---
+效果如下
+<img width="2532" height="1344" alt="image" src="https://github.com/user-attachments/assets/34bcefef-8d3a-4310-bd11-41e98c9e6353" />
