@@ -26,6 +26,7 @@ func init() {
 	exportCmd.Flags().StringVarP(&exportPlatform, "platform", "p", "", "platform (windows/darwin)")
 	exportCmd.Flags().IntVarP(&exportVersion, "version", "v", 0, "version (3/4)")
 	exportCmd.Flags().StringVarP(&exportKey, "key", "y", "", "decryption key")
+	exportCmd.Flags().BoolVarP(&exportImages, "images", "i", true, "export images along with chat logs")
 }
 
 var (
@@ -38,6 +39,7 @@ var (
 	exportPlatform  string
 	exportVersion   int
 	exportKey       string
+	exportImages    bool
 )
 
 var exportCmd = &cobra.Command{
@@ -126,6 +128,36 @@ var exportCmd = &cobra.Command{
 		// 确定输出文件路径
 		if exportOutput == "" {
 			exportOutput = fmt.Sprintf("chatlog_%s.%s", time.Now().Format("20060102_150405"), exportFormat)
+		}
+
+		// 如果需要，先导出图片
+		if exportImages {
+			// 文件夹名称与json文件名相同
+			exportImageDir := strings.TrimSuffix(exportOutput, filepath.Ext(exportOutput))
+			fmt.Println("正在导出图片...")
+			if err := export.ExportChatImages(messages, exportImageDir, m.Context(), func(current, total int) {
+				percentage := float64(current) / float64(total) * 100
+				width := 30 // 进度条宽度
+				completed := int(float64(width) * float64(current) / float64(total))
+				remaining := width - completed
+
+				// 构建进度条
+				progressBar := fmt.Sprintf("\r导出图片: [%s%s] %.1f%% (%d/%d)",
+					strings.Repeat("=", completed),
+					strings.Repeat("-", remaining),
+					percentage,
+					current,
+					total)
+
+				fmt.Print(progressBar)
+				if current == total {
+					fmt.Println() // 完成后换行
+				}
+			}); err != nil {
+				log.Err(err).Msg("failed to export images")
+				return
+			}
+			fmt.Printf("Successfully exported images to %s\n", exportImageDir)
 		}
 
 		// 导出消息

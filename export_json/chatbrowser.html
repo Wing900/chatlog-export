@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聊天记录浏览器</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500&display=swap');
+        
+        :root {
+            --body-bg: #EDEDED;
+            --app-bg: #FFFFFF;
+            --header-bg: #F7F7F7;
+            --bubble-self-bg: #95EC69;
+            --bubble-other-bg: #FFFFFF;
+            --text-primary: #1A1A1A;
+            --text-secondary: #B2B2B2;
+            --border-color: #E0E0E0;
+            --accent-color: #07C160;
+            --sidebar-bg: #F7F7F7;
+            --sidebar-width: 250px;
+            --toolbar-width: 300px;
+        }
+        body {
+            background-color: var(--body-bg);
+            font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            -webkit-font-smoothing: antialiased;
+        }
+        #app-container { 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            background-color: var(--app-bg); 
+            min-height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.05); 
+        }
+        #file-selector-container { 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            align-items: center; 
+            text-align: center; 
+            padding: 60px 20px; 
+            flex-grow: 1; 
+        }
+        #file-selector-container h2 { 
+            font-size: 1.5em; 
+            color: var(--text-primary); 
+            font-weight: 500; 
+            margin-bottom: 30px; 
+        }
+        #file-input-label { 
+            background-color: var(--accent-color); 
+            color: white; 
+            padding: 14px 24px; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-size: 1.1em; 
+            font-weight: 500; 
+            transition: all 0.2s ease-in-out; 
+            box-shadow: 0 4px 10px rgba(7, 193, 96, 0.2); 
+        }
+        #file-input-label:hover { 
+            background-color: #06ad56; 
+            transform: translateY(-2px); 
+            box-shadow: 0 6px 15px rgba(7, 193, 96, 0.3); 
+        }
+        #file-input { display: none; }
+        #chat-header { 
+            text-align: center; 
+            padding: 12px; 
+            border-bottom: 1px solid var(--border-color); 
+            background-color: rgba(247, 247, 247, 0.8); 
+            position: sticky; 
+            top: 0; 
+            z-index: 100; 
+            backdrop-filter: blur(10px); 
+            display: none; 
+        }
+        #chat-title { 
+            margin: 0; 
+            font-size: 1em; 
+            font-weight: 500; 
+            color: var(--text-primary); 
+        }
+        #main-container {
+            display: flex;
+            flex-direction: row;
+            flex-grow: 1;
+            overflow: hidden;
+        }
+        #chat-container { 
+            padding: 20px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 10px; 
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-top: 50px;
+        }
+        
+        /* 时间分割线样式 */
+        .time-divider {
+            text-align: center;
+            margin: 15px 0;
+        }
+        .time-divider span {
+            background-color: #DADADA;
+            color: #FFFFFF;
+            font-size: 0.8em;
+            padding: 4px 10px;
+            border-radius: 12px;
+        }
+        .time-divider a {
+            background-color: #DADADA;
+            color: #FFFFFF;
+            font-size: 0.8em;
+            padding: 4px 10px;
+            border-radius: 12px;
+            text-decoration: none;
+        }
+        .message { display: flex; flex-direction: column; max-width: 75%; margin-top: 10px; }
+        .message-bubble { padding: 12px 16px; border-radius: 20px; line-height: 1.6; word-wrap: break-word; font-size: 16px; }
+        .message-bubble img { max-width: 100%; border-radius: 10px; }
+        .sender-name { font-size: 0.8em; color: var(--text-secondary); margin-bottom: 6px; }
+        .other { align-self: flex-start; }
+        .other .message-bubble { background-color: var(--bubble-other-bg); border: 1px solid var(--border-color); border-top-left-radius: 4px; }
+        .other .sender-name { margin-left: 10px; }
+        .self { align-self: flex-end; }
+        .self .message-bubble { background-color: var(--bubble-self-bg); border-top-right-radius: 4px; }
+        .self .sender-name { display: none; }
+        .app-card { display: block; text-decoration: none; color: inherit; padding: 12px; border: 1px solid #eee; border-radius: 8px; background: #fafafa; }
+        .app-card-title { font-weight: 500; font-size: 1em; margin-bottom: 8px; }
+        .app-card-desc { font-size: 0.9em; color: var(--text-secondary); margin: 0; }
+        .placeholder-text { font-style: italic; color: var(--text-secondary); }
+        .empty-message {
+            font-style: italic;
+            color: #999;
+            background-color: #f5f5f5;
+        }
+        .emoji-container {
+            display: inline-block;
+            font-size: 18px;
+            vertical-align: middle;
+        }
+        .emoji-type {
+            font-style: italic;
+            color: #666;
+            font-size: 14px;
+        }
+        .highlight {
+            background-color: yellow;
+            font-weight: bold;
+        }
+        .message-highlight {
+            animation: highlight 2s;
+        }
+        @keyframes highlight {
+            0% { background-color: yellow; }
+            100% { background-color: transparent; }
+        }
+        
+        /* 工具栏样式 */
+        #toolbar-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            z-index: 1000;
+            font-size: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }
+        
+        #toolbar-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+        }
+        
+        #toolbar {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: var(--toolbar-width);
+            height: 100vh;
+            background: white;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+            z-index: 999;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #toolbar.open {
+            transform: translateX(0);
+        }
+        
+        #toolbar-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        #toolbar-header h2 {
+            margin: 0;
+            font-size: 1.2em;
+            color: var(--text-primary);
+        }
+        
+        #toolbar-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background 0.2s;
+        }
+        
+        #toolbar-close:hover {
+            background: #f0f0f0;
+        }
+        
+        #toolbar-content {
+            padding: 20px;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+        
+        #search-container, #time-index-container {
+            margin-bottom: 30px;
+        }
+        
+        #search-container h3, #time-index-container h3 {
+            margin-top: 0;
+            margin-bottom: 15px;
+            font-size: 1em;
+            color: var(--text-primary);
+        }
+        
+        #search-box, #time-search-box {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 14px;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+        
+        #search-results, #time-search-results {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            margin-top: 10px;
+            display: none;
+        }
+        
+        .search-result, .time-search-result {
+            padding: 10px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .search-result:hover, .time-search-result:hover {
+            background-color: #f0f0f0;
+        }
+        
+        .search-result:last-child, .time-search-result:last-child {
+            border-bottom: none;
+        }
+        
+        #time-index {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+        }
+        
+        .time-link {
+            display: block;
+            padding: 10px;
+            text-decoration: none;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .time-link:hover {
+            background-color: #f0f0f0;
+        }
+        
+        .time-link:last-child {
+            border-bottom: none;
+        }
+        
+        /* 遮罩层 */
+        #overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.3);
+            z-index: 998;
+            display: none;
+        }
+        
+        #overlay.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="app-container">
+        <div id="file-selector-container">
+            <h2>欢迎使用聊天记录浏览器</h2>
+            <div style="display: flex; flex-direction: column; gap: 15px; align-items: center;">
+                <label for="file-input" id="file-input-label">选择 JSON 文件</label>
+                <input type="file" id="file-input" accept=".json">
+                <button id="image-dir-button" style="background-color: #f0f0f0; color: #333; padding: 14px 24px; border-radius: 8px; cursor: pointer; font-size: 1.1em; font-weight: 500; border: 1px solid #ccc; transition: all 0.2s ease-in-out;">选择图片文件夹 (可选)</button>
+            </div>
+        </div>
+        <div id="chat-header"><h1 id="chat-title"></h1></div>
+        <button id="toolbar-toggle">☰</button>
+        <div id="toolbar">
+            <div id="toolbar-header">
+                <h2>工具箱</h2>
+                <button id="toolbar-close">&times;</button>
+            </div>
+            <div id="toolbar-content">
+                <div id="search-container">
+                    <h3>搜索</h3>
+                    <input type="text" id="search-box" placeholder="搜索聊天记录...">
+                    <div id="search-results"></div>
+                </div>
+                <div id="time-index-container">
+                    <h3>时间索引</h3>
+                    <input type="text" id="time-search-box" placeholder="搜索日期...">
+                    <div id="time-search-results"></div>
+                    <div id="time-index"></div>
+                </div>
+                <div id="image-settings-container" style="margin-bottom: 30px;">
+                    <h3>图片设置</h3>
+                    <button id="toolbar-image-dir-button" style="width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; cursor: pointer; background-color: #f0f0f0;">选择图片文件夹</button>
+                    <p id="image-dir-status" style="font-size: 0.8em; color: var(--text-secondary); margin-top: 8px; text-align: center;">当前未选择文件夹</p>
+                </div>
+            </div>
+        </div>
+        <div id="overlay"></div>
+        <div id="chat-container"></div>
+    </div>
+    <script>
+        // JavaScript V8.0 - 终极典藏版，增加智能时间戳和表情渲染
+        const parser = new DOMParser();
+        let allMessages = [];
+        let timeIndex = []; // 存储时间索引
+        let imageDirectoryHandle = null;
+        
+        // 表情映射表 - 将文本表情转换为实际表情
+        const emojiMap = {
+            "[微笑]": "😊",
+            "[奸笑]": "😏",
+            "[笑哭]": "😂",
+            "[爱心]": "❤️",
+            "[点赞]": "👍",
+            "[难过]": "😢",
+            "[惊讶]": "😮",
+            "[调皮]": "😜",
+            "[呲牙]": "😁",
+            "[疑问]": "❓",
+            "[奋斗]": "💪",
+            "[抱拳]": "🙏",
+            "[OK]": "👌",
+            "[弱]": "😩",
+            "[耶]": "😎",
+            "[加油]": "💦",
+            "[吃瓜]": "🍉",
+            "[困]": "😴",
+            "[汗]": "😰",
+            "[尴尬]": "😅",
+            "[抠鼻]": "🤔",
+            "[鼓掌]": "👏",
+            "[发怒]": "😠",
+            "[流泪]": "😭",
+            "[捂脸]": "🤦",
+            "[机智]": "🤓",
+            "[吃狗粮]": "🐶",
+            "[旺柴]": "🐶",
+            "[狗头]": "🐶",
+            "[让我看看]": "👀",
+            "[社会社会]": "🤝",
+            "[哇]": "😲",
+            "[嘘]": "🤫",
+            "[裂开]": "😵",
+            "[苦涩]": "😣",
+            "[发抖]": "😨",
+            "[敬礼]": "🫡",
+            "[666]": "👍👍👍",
+            "[让我康康]": "👀",
+            "[干饭]": "🍚",
+            "[叹气]": "😔",
+            "[嘿哈]": "😄",
+            "[捂脸哭]": "🥺",
+            "[皱眉]": "😟",
+            "[天啊]": "😱",
+            "[Emm]": "🤔",
+            "[好的]": "👌",
+            "[打脸]": "🤦",
+            "[翻白眼]": "🙄",
+            "[嘴唇]": "👄",
+            "[心碎]": "💔",
+            "[拥抱]": "🤗",
+            "[强]": "💪",
+            "[弱]": "👎",
+            "[握手]": "🤝",
+            "[胜利]": "✌️",
+            "[勾引]": "😏",
+            "[拳头]": "👊",
+            "[合十]": "🙏",
+            "[啤酒]": "🍺",
+            "[咖啡]": "☕",
+            "[蛋糕]": "🎂",
+            "[玫瑰]": "🌹",
+            "[凋谢]": "🥀",
+            "[菜刀]": "🔪",
+            "[炸弹]": "💣",
+            "[便便]": "💩",
+            "[月亮]": "🌙",
+            "[太阳]": "☀️",
+            "[庆祝]": "🎉",
+            "[礼物]": "🎁",
+            "[红包]": "🧧",
+            "[發]": "💰",
+            "[福]": "🧧",
+            "[烟花]": "🎆",
+            "[爆竹]": "🧨",
+            "[鸡]": "🐔",
+            "[狗]": "🐶",
+            "[猪]": "🐷",
+            "[鼠]": "🐭",
+            "[牛]": "🐮",
+            "[虎]": "🐯",
+            "[兔]": "🐰",
+            "[龙]": "🐲",
+            "[蛇]": "🐍",
+            "[马]": "🐴",
+            "[羊]": "🐑",
+            "[猴]": "🐵",
+            "[鸡]": "🐔",
+            "[狗]": "🐶",
+            "[猪]": "🐷"
+        };
+        
+        // 表情类型映射表
+        const emojiTypeMap = {
+            "1": "[内置表情]",  // 内置表情
+            "2": "[自定义表情]",  // 自定义表情/贴纸
+            "3": "[GIF]"   // 动画表情
+        };
+        
+        function formatTimestamp(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            const h = String(date.getHours()).padStart(2, '0');
+            const min = String(date.getMinutes()).padStart(2, '0');
+            return `${y}-${m}-${d} ${h}:${min}`;
+        }
+        function formatDate(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+        function parseXmlAndGetData(xmlString) {
+            try {
+                const cleanedXml = xmlString.replace(/\u0000/g, '').trim();
+                const xmlDoc = parser.parseFromString(cleanedXml, "text/xml");
+                const title = xmlDoc.querySelector("title")?.textContent.trim();
+                const desc = xmlDoc.querySelector("desc")?.textContent.trim();
+                return { title, desc };
+            } catch (e) {
+                console.error("XML解析失败:", e, "原始内容:", xmlString);
+                return null;
+            }
+        }
+        async function renderMessage(msg) {
+            console.log("[DEBUG] 开始渲染消息 - 类型:", msg.type, "内容预览:", msg.content?.substring(0, 50) || '无内容', "图片路径:", msg.imagePath || '无');
+            
+            const bubbleDiv = document.createElement('div');
+            bubbleDiv.classList.add('message-bubble');
+            
+            // 检查消息内容是否为空
+            if (!msg.content || msg.content.trim() === '') {
+                console.warn("发现空消息:", msg); // 添加警告日志
+                bubbleDiv.textContent = '[空消息]';
+                bubbleDiv.classList.add('empty-message');
+                return bubbleDiv;
+            }
+            
+            switch (msg.type) {
+                case 3: // Image
+                    console.log("[DEBUG] 处理图片消息 - 图片路径:", msg.imagePath || '未提供');
+                    if (msg.imagePath && imageDirectoryHandle) {
+                        console.log("[DEBUG] 尝试从选择的文件夹加载图片:", msg.imagePath);
+                        try {
+                            const fileHandle = await imageDirectoryHandle.getFileHandle(msg.imagePath, { create: false });
+                            const file = await fileHandle.getFile();
+                            const imageSrc = URL.createObjectURL(file);
+                            console.log("[DEBUG] 图片加载成功，创建对象URL:", imageSrc);
+                            bubbleDiv.innerHTML = `<img src="${imageSrc}" alt="Image" style="max-width: 100%; border-radius: 10px;" onload="console.log('[DEBUG] 图片渲染完成:', this.src); setTimeout(() => { URL.revokeObjectURL(this.src); console.log('[DEBUG] 已释放图片资源:', this.src); }, 5000);" onerror="console.error('[DEBUG] 图片渲染失败:', this.src, event)">`;
+                        } catch (err) {
+                            console.error(`[DEBUG] 无法从选择的文件夹加载图片: ${msg.imagePath}`, err);
+                            bubbleDiv.textContent = `[图片加载失败: ${msg.imagePath}]`;
+                        }
+                    } else if (msg.imagePath) {
+                        console.log("[DEBUG] 图片路径存在，但未选择文件夹");
+                        bubbleDiv.textContent = '[图片 (请选择图片文件夹)]';
+                    } else {
+                        console.log("[DEBUG] 无图片路径，显示占位符");
+                        bubbleDiv.textContent = '[图片]';
+                    }
+                    break;
+                case 1:
+                    console.log("处理文本消息:", msg.content); // 添加日志
+                    
+                    // 处理文本消息中的表情
+                    let textContent = msg.content;
+                    // 查找所有表情格式并替换
+                    const emojiRegex = /\[([^\]]+)\]/g;
+                    let match;
+                    let lastIndex = 0;
+                    let resultHTML = '';
+                    
+                    while ((match = emojiRegex.exec(textContent)) !== null) {
+                        // 添加表情前的文本
+                        resultHTML += textContent.substring(lastIndex, match.index);
+                        
+                        // 检查是否是表情
+                        if (emojiMap[match[0]]) {
+                            // 添加表情符号
+                            resultHTML += emojiMap[match[0]];
+                            console.log("文本中的表情映射:", match[0], "->", emojiMap[match[0]]); // 添加日志
+                        } else {
+                            // 不是表情，保持原样
+                            resultHTML += match[0];
+                            console.log("文本中的非表情:", match[0]); // 添加日志
+                        }
+                        
+                        lastIndex = match.index + match[0].length;
+                    }
+                    
+                    // 添加剩余文本
+                    resultHTML += textContent.substring(lastIndex);
+                    
+                    bubbleDiv.innerHTML = resultHTML;
+                    break;
+                case 47:
+                    console.log("处理表情消息:", msg.content); // 添加日志
+                    // 表情消息处理
+                    let emojiContent = msg.content;
+                    let emojiDisplay = '[表情]'; // 默认显示
+                    
+                    // 首先尝试解析XML格式的表情
+                    if (emojiContent.includes('<emoji')) {
+                        try {
+                            const xmlDoc = parser.parseFromString(emojiContent, "text/xml");
+                            const emojiElement = xmlDoc.querySelector("emoji");
+                            if (emojiElement) {
+                                // 尝试从XML属性中获取表情信息
+                                const type = emojiElement.getAttribute("type");
+                                const desc = emojiElement.getAttribute("desc") || emojiElement.getAttribute("attachedtext");
+                                const md5 = emojiElement.getAttribute("md5");
+                                
+                                console.log("XML表情属性:", { type, desc, md5 }); // 添加日志
+                                
+                                if (desc) {
+                                    // 如果有描述，尝试映射为表情符号
+                                    const descMatch = desc.match(/\[([^\]]+)\]/);
+                                    if (descMatch && emojiMap[descMatch[0]]) {
+                                        emojiDisplay = emojiMap[descMatch[0]];
+                                        console.log("XML表情映射:", descMatch[0], "->", emojiDisplay); // 添加日志
+                                    } else {
+                                        // 如果没有映射，显示描述
+                                        emojiDisplay = desc;
+                                        console.log("XML表情描述:", desc); // 添加日志
+                                    }
+                                } else if (type && emojiTypeMap[type]) {
+                                    // 如果有类型信息，并且有对应的映射
+                                    emojiDisplay = `<span class="emoji-type">${emojiTypeMap[type]}</span>`;
+                                    console.log("XML表情类型映射:", type, "->", emojiDisplay); // 添加日志
+                                } else if (type) {
+                                    // 如果有类型信息，但没有映射，显示类型
+                                    emojiDisplay = '<span class="emoji-type">[表情]</span>';
+                                    console.log("XML表情类型:", type); // 添加日志
+                                } else if (md5) {
+                                    // 如果有MD5，可能是自定义表情
+                                    emojiDisplay = '<span class="emoji-type">[自定义表情]</span>';
+                                    console.log("XML自定义表情MD5:", md5); // 添加日志
+                                } else {
+                                    // 如果都没有，显示通用表情占位符
+                                    emojiDisplay = '<span class="emoji-type">[表情]</span>';
+                                    console.log("XML表情无描述和类型"); // 添加日志
+                                }
+                            }
+                        } catch (e) {
+                            console.error("XML表情解析失败:", e, "原始内容:", emojiContent); // 添加错误日志
+                            emojiDisplay = '<span class="emoji-type">[表情]</span>';
+                        }
+                    } else {
+                        // 处理非XML格式的表情（如[微笑]）
+                        let emojiDisplay = emojiContent; // 默认显示原始内容
+                        
+                        // 检查内容是否包含表情描述格式
+                        const emojiMatch = emojiContent.match(/\[([^\]]+)\]/);
+                        if (emojiMatch && emojiMap[emojiMatch[0]]) {
+                            // 如果在映射表中，使用对应的表情符号
+                            emojiDisplay = emojiMap[emojiMatch[0]];
+                            console.log("表情映射:", emojiMatch[0], "->", emojiDisplay); // 添加日志
+                        } else {
+                            console.log("未找到表情映射:", emojiMatch ? emojiMatch[0] : "无匹配项"); // 添加日志
+                        }
+                    }
+                    
+                    // 创建表情容器
+                    const emojiContainer = document.createElement('span');
+                    emojiContainer.className = 'emoji-container';
+                    emojiContainer.innerHTML = emojiDisplay;
+                    bubbleDiv.appendChild(emojiContainer);
+                    break;
+                case 49:
+                    console.log("处理分享/引用消息:", msg.content, "子类型:", msg.subType); // 添加日志
+                    // 引用消息处理 - 直接显示内容
+                    if (msg.subType === 57) {
+                        console.log("处理引用消息:", msg.content); // 添加日志
+                        bubbleDiv.textContent = msg.content;
+                    } else {
+                        // 其他类型的分享消息
+                        console.log("处理其他分享消息:", msg.content); // 添加日志
+                        const cardData = parseXmlAndGetData(msg.content);
+                        if (cardData && cardData.title) {
+                            console.log("分享消息解析成功:", cardData); // 添加日志
+                            bubbleDiv.style.padding = '0';
+                            bubbleDiv.style.background = 'none';
+                            bubbleDiv.style.border = 'none';
+                            bubbleDiv.innerHTML = `
+                                <div class="app-card">
+                                    <div class="app-card-title">${cardData.title}</div>
+                                    ${cardData.desc ? `<p class="app-card-desc">${cardData.desc}</p>` : ''}
+                                </div>
+                            `;
+                        } else {
+                            console.warn("分享消息解析失败，显示原始内容"); // 添加警告日志
+                            // 如果XML解析失败，尝试作为普通文本显示
+                            bubbleDiv.textContent = msg.content;
+                        }
+                    }
+                    break;
+                default:
+                    console.warn("处理未知类型消息:", msg.type, msg.typeDesc, msg.content); // 添加警告日志
+                    bubbleDiv.textContent = `[${msg.typeDesc || `未知类型: ${msg.type}`}]`;
+                    bubbleDiv.classList.add('placeholder-text');
+                    break;
+            }
+            
+            // 检查渲染后的内容是否为空
+            if (bubbleDiv.textContent.trim() === '' && bubbleDiv.children.length === 0) {
+                console.warn("渲染后内容为空:", msg); // 添加警告日志
+                bubbleDiv.textContent = '[空消息]';
+                bubbleDiv.classList.add('empty-message');
+            }
+            
+            return bubbleDiv;
+        }
+        // 构建时间索引
+        function buildTimeIndex(messages) {
+            console.log("构建时间索引，消息数量:", messages.length); // 添加日志
+            timeIndex = [];
+            const dateMap = new Map();
+            
+            messages.forEach((msg, index) => {
+                const date = new Date(msg.time);
+                const dateStr = formatDate(date);
+                
+                if (!dateMap.has(dateStr)) {
+                    dateMap.set(dateStr, {
+                        date: dateStr,
+                        timestamp: date.getTime(),
+                        firstIndex: index,
+                        displayText: formatTimestamp(date)
+                    });
+                }
+            });
+            
+            // 转换为数组并按时间排序
+            timeIndex = Array.from(dateMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+            console.log("时间索引构建完成，索引数量:", timeIndex.length); // 添加日志
+            renderTimeIndex();
+        }
+        // 搜索时间索引
+        function searchTimeIndex(keyword) {
+            console.log("搜索时间索引:", keyword); // 添加日志
+            const resultsContainer = document.getElementById('time-search-results');
+            resultsContainer.innerHTML = '';
+            
+            if (!keyword) {
+                resultsContainer.style.display = 'none';
+                document.getElementById('time-index').style.display = 'block';
+                return;
+            }
+            
+            const results = timeIndex.filter(item => 
+                item.date.includes(keyword) || item.displayText.includes(keyword)
+            );
+            
+            console.log("时间索引搜索结果:", results.length); // 添加日志
+            
+            if (results.length > 0) {
+                results.forEach(result => {
+                    const resultElement = document.createElement('div');
+                    resultElement.className = 'time-search-result';
+                    resultElement.textContent = result.displayText;
+                    resultElement.dataset.index = result.firstIndex;
+                    resultElement.addEventListener('click', (e) => {
+                        scrollToMessage(parseInt(e.target.dataset.index));
+                        toggleToolbar();
+                        resultsContainer.style.display = 'none';
+                        document.getElementById('time-index').style.display = 'block';
+                    });
+                    resultsContainer.appendChild(resultElement);
+                });
+                resultsContainer.style.display = 'block';
+                document.getElementById('time-index').style.display = 'none';
+            } else {
+                resultsContainer.style.display = 'none';
+                document.getElementById('time-index').style.display = 'block';
+            }
+        }
+        // 渲染时间索引
+        function renderTimeIndex() {
+            console.log("渲染时间索引"); // 添加日志
+            const timeIndexContainer = document.getElementById('time-index');
+            timeIndexContainer.innerHTML = '';
+            
+            timeIndex.forEach(item => {
+                const link = document.createElement('a');
+                link.href = '#';
+                link.className = 'time-link';
+                link.textContent = item.displayText;
+                link.dataset.index = item.firstIndex;
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    scrollToMessage(parseInt(e.target.dataset.index));
+                    toggleToolbar(); // 点击后关闭工具栏
+                });
+                timeIndexContainer.appendChild(link);
+            });
+        }
+        // 滚动到指定消息
+        function scrollToMessage(index) {
+            console.log("滚动到消息:", index); // 添加日志
+            const messageElements = document.querySelectorAll('.message, .time-divider');
+            if (messageElements[index]) {
+                messageElements[index].scrollIntoView({ behavior: 'smooth' });
+            } else {
+                console.warn("找不到要滚动的消息:", index); // 添加警告日志
+            }
+        }
+        // 搜索功能
+        function searchMessages(keyword) {
+            console.log("搜索消息:", keyword); // 添加日志
+            const resultsContainer = document.getElementById('search-results');
+            resultsContainer.innerHTML = '';
+            
+            if (!keyword) {
+                resultsContainer.style.display = 'none';
+                return;
+            }
+            
+            const results = [];
+            allMessages.forEach((msg, index) => {
+                if (msg.content && msg.content.includes(keyword)) {
+                    results.push({ index, msg });
+                }
+            });
+            
+            console.log("消息搜索结果:", results.length); // 添加日志
+            
+            if (results.length > 0) {
+                results.slice(0, 10).forEach(result => {
+                    const resultElement = document.createElement('div');
+                    resultElement.className = 'search-result';
+                    resultElement.textContent = result.msg.content.substring(0, 30) + (result.msg.content.length > 30 ? '...' : '');
+                    resultElement.addEventListener('click', () => {
+                        scrollToMessage(result.index);
+                        highlightMessage(result.index, keyword);
+                        resultsContainer.style.display = 'none';
+                        toggleToolbar(); // 点击后关闭工具栏
+                    });
+                    resultsContainer.appendChild(resultElement);
+                });
+                resultsContainer.style.display = 'block';
+            } else {
+                resultsContainer.style.display = 'none';
+            }
+        }
+        // 滚动到指定消息
+        function scrollToMessage(index, keyword) {
+            console.log("滚动到消息并高亮:", index, keyword); // 添加日志
+            const messageElements = document.querySelectorAll('.message');
+            if (messageElements[index]) {
+                messageElements[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // 添加高亮效果
+                messageElements[index].classList.add('message-highlight');
+                setTimeout(() => {
+                    messageElements[index].classList.remove('message-highlight');
+                }, 2000);
+                
+                // 高亮关键词
+                if (keyword) {
+                    const bubble = messageElements[index].querySelector('.message-bubble');
+                    if (bubble) {
+                        const regex = new RegExp(`(${keyword})`, 'gi');
+                        bubble.innerHTML = bubble.textContent.replace(regex, '<span class="highlight">$1</span>');
+                        setTimeout(() => {
+                            clearHighlights();
+                        }, 2000);
+                    }
+                }
+            } else {
+                console.warn("找不到要滚动的消息:", index); // 添加警告日志
+            }
+        }
+        // 清除高亮
+        function clearHighlights() {
+            console.log("清除高亮"); // 添加日志
+            const highlights = document.querySelectorAll('.highlight');
+            highlights.forEach(span => {
+                const parent = span.parentNode;
+                parent.replaceChild(document.createTextNode(span.textContent), span);
+                parent.normalize();
+            });
+        }
+        // 切换工具栏显示/隐藏
+        function toggleToolbar() {
+            console.log("切换工具栏"); // 添加日志
+            const toolbar = document.getElementById('toolbar');
+            const overlay = document.getElementById('overlay');
+            toolbar.classList.toggle('open');
+            overlay.classList.toggle('show');
+        }
+        document.getElementById('image-dir-button').addEventListener('click', async () => {
+            try {
+                imageDirectoryHandle = await window.showDirectoryPicker();
+                alert('图片文件夹选择成功！现在加载的聊天记录中的图片将从此文件夹读取。');
+            } catch (err) {
+                console.error('选择图片文件夹失败:', err);
+                alert('选择图片文件夹失败，请允许浏览器访问文件夹。');
+            }
+        });
+
+        document.getElementById('file-input').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            console.log("选择文件:", file.name); // 添加日志
+            
+            const reader = new FileReader();
+            reader.onload = async function(e) { // Make the onload function async
+                console.log("[DEBUG] 文件读取完成，开始解析 JSON 内容"); // 添加日志
+                const chatContainer = document.getElementById('chat-container');
+                const chatHeader = document.getElementById('chat-header');
+                const chatTitle = document.getElementById('chat-title');
+                const fileSelector = document.getElementById('file-selector-container');
+                try {
+                    const messages = JSON.parse(e.target.result);
+                    console.log("消息解析完成，消息数量:", messages.length); // 添加日志
+                    allMessages = messages; // 保存所有消息用于搜索
+                    fileSelector.style.display = 'none';
+                    chatHeader.style.display = 'block';
+                    document.getElementById('image-dir-button').style.display = 'block'; // Show the button after JSON is loaded
+                    
+                    // 修改标题显示逻辑，优先显示对方的名字
+                    let chatTitleText = '聊天记录';
+                    if (messages.length > 0) {
+                        // 尝试从消息中获取对方的名字
+                        for (let i = 0; i < messages.length; i++) {
+                            if (!messages[i].isSelf && messages[i].senderName) {
+                                chatTitleText = messages[i].senderName;
+                                break;
+                            }
+                        }
+                        // 如果没找到对方名字，则尝试使用talkerName
+                        if (chatTitleText === '聊天记录') {
+                            chatTitleText = messages[0].talkerName || '聊天记录';
+                        }
+                    } else {
+                        chatTitleText = '空的聊天记录';
+                    }
+                    console.log("设置聊天标题:", chatTitleText); // 添加日志
+                    chatTitle.textContent = chatTitleText;
+                    chatContainer.innerHTML = ''; 
+                    let lastTimestamp = null;
+                    const TIME_GAP = 5 * 60 * 1000; // 5分钟的毫秒数
+                    
+                    let emptyMessageCount = 0; // 统计空消息数量
+                    let processedMessageCount = 0; // 统计处理的消息数量
+                    
+                    for (const msg of messages) {
+                        processedMessageCount++;
+                        const currentTimestamp = new Date(msg.time);
+                        
+                        // !!!!!! 智能时间戳的核心逻辑 !!!!!!
+                        if (lastTimestamp === null || (currentTimestamp - lastTimestamp) > TIME_GAP) {
+                            const timeDivider = document.createElement('div');
+                            timeDivider.className = 'time-divider';
+                            timeDivider.innerHTML = `<a name="time-${currentTimestamp.getTime()}">${formatTimestamp(currentTimestamp)}</a>`;
+                            chatContainer.appendChild(timeDivider);
+                        }
+                        lastTimestamp = currentTimestamp;
+                        // !!!!!! 时间戳逻辑结束 !!!!!!
+                        
+                        const messageDiv = document.createElement('div');
+                        messageDiv.classList.add('message');
+                        if (msg.isSelf) {
+                            messageDiv.classList.add('self');
+                        } else {
+                            messageDiv.classList.add('other');
+                            const senderNameDiv = document.createElement('div');
+                            senderNameDiv.classList.add('sender-name');
+                            senderNameDiv.textContent = msg.senderName;
+                            messageDiv.appendChild(senderNameDiv);
+                        }
+                        
+                        const bubbleDiv = await renderMessage(msg); // Use await here
+                        messageDiv.appendChild(bubbleDiv);
+                        chatContainer.appendChild(messageDiv);
+                        
+                        // 检查是否是空消息
+                        if (bubbleDiv.classList.contains('empty-message')) {
+                            emptyMessageCount++;
+                        }
+                    }
+                    
+                    console.log("消息渲染完成，处理消息数:", processedMessageCount, "空消息数:", emptyMessageCount); // 添加日志
+                    
+                    // 构建时间索引
+                    buildTimeIndex(messages);
+                } catch (error) {
+                    console.error("文件解析失败:", error); // 添加错误日志
+                    alert(`文件解析失败！\n错误信息: ${error.message}`);
+                    fileSelector.style.display = 'flex';
+                    chatHeader.style.display = 'none';
+                    chatContainer.innerHTML = '';
+                }
+            };
+            reader.readAsText(file, 'UTF-8');
+        });
+        // 添加搜索框事件监听
+        document.getElementById('search-box').addEventListener('input', function(e) {
+            searchMessages(e.target.value);
+        });
+        // 添加工具栏切换按钮事件监听
+        document.getElementById('toolbar-toggle').addEventListener('click', toggleToolbar);
+        document.getElementById('toolbar-close').addEventListener('click', toggleToolbar);
+        
+        // 添加时间索引搜索框事件监听
+        document.getElementById('time-search-box').addEventListener('input', function(e) {
+            searchTimeIndex(e.target.value);
+        });
+        
+        // 点击遮罩层关闭工具栏
+        document.getElementById('overlay').addEventListener('click', toggleToolbar);
+        // 点击其他地方关闭搜索结果
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('#search-container')) {
+                document.getElementById('search-results').style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>

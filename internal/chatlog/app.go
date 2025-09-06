@@ -709,7 +709,7 @@ func (a *App) selectAccountSelected(i *menu.Item) {
 						// 如果是当前账号，则无需切换
 						if a.ctx.Current != nil && a.ctx.Current.PID == instance.PID {
 							a.mainPages.RemovePage("submenu")
-							a.showInfo("已经是当前账号")
+							a.showInfo("已经是当前���号")
 							return
 						}
 
@@ -888,7 +888,7 @@ func (a *App) selectTalkerForExport(format string) {
 		// 在主线程中创建选择界面
 		a.QueueUpdateDraw(func() {
 			a.mainPages.RemovePage("modal")
-			
+
 			// 创建一个列表用于选择联系人
 			list := tview.NewList().
 				ShowSecondaryText(false).
@@ -916,12 +916,12 @@ func (a *App) selectTalkerForExport(format string) {
 						}
 					}
 					// 执行导出
-					a.performExport(format, talker)
+					a.showExportOptions(format, talker)
 				})
 
 			// 添加"全部聊天记录"选项
 			list.AddItem("全部聊天记录", "", 0, nil)
-			
+
 			// 添加所有联系人
 			for _, contact := range contacts.Items {
 				name := contact.Remark
@@ -949,13 +949,13 @@ func (a *App) selectTalkerForExport(format string) {
 						a.SetFocus(list)
 					}
 				})
-			
+
 			// 添加搜索功能
 			searchField.SetChangedFunc(func(text string) {
 				list.Clear()
 				// 添加"全部聊天记录"选项
 				list.AddItem("全部聊天记录", "", 0, nil)
-				
+
 				// 根据搜索文本过滤联系人
 				filteredContacts := make([]*model.Contact, 0)
 				if text == "" {
@@ -971,14 +971,14 @@ func (a *App) selectTalkerForExport(format string) {
 						if name == "" {
 							name = contact.UserName
 						}
-						
+
 						// 检查是否匹配搜索文本
 						if strings.Contains(name, text) || strings.Contains(contact.UserName, text) {
 							filteredContacts = append(filteredContacts, contact)
 						}
 					}
 				}
-				
+
 				// 添加过滤后的联系人
 				for _, contact := range filteredContacts {
 					name := contact.Remark
@@ -1005,8 +1005,30 @@ func (a *App) selectTalkerForExport(format string) {
 	}()
 }
 
+// showExportOptions 显示导出选项
+func (a *App) showExportOptions(format string, talker string) {
+	formView := form.NewForm("导出选项")
+
+	exportImages := true
+
+	formView.AddCheckbox("导出图片", exportImages, func(checked bool) {
+		exportImages = checked
+	})
+
+	formView.AddButton("导出", func() {
+		a.mainPages.RemovePage("submenu2")
+		a.performExport(format, talker, exportImages)
+	})
+	formView.AddButton("取消", func() {
+		a.mainPages.RemovePage("submenu2")
+	})
+
+	a.mainPages.AddPage("submenu2", formView, true, true)
+	a.SetFocus(formView)
+}
+
 // performExport 执行实际的导出操作
-func (a *App) performExport(format string, talker string) {
+func (a *App) performExport(format string, talker string, exportImages bool) {
 	// 显示导出中的模态框
 	modal := tview.NewModal().SetText("正在导出聊天记录...")
 	a.mainPages.AddPage("modal", modal, true, true)
@@ -1028,7 +1050,7 @@ func (a *App) performExport(format string, talker string) {
 			} else {
 				actionText = "正在获取消息..."
 			}
-			
+
 			progressBar := fmt.Sprintf("正在导出聊天记录\n\n%s\n[%s%s] %.1f%%\n(%d/%d)",
 				actionText,
 				strings.Repeat("█", completed),
@@ -1092,8 +1114,46 @@ func (a *App) performExport(format string, talker string) {
 			}
 		}
 
-		// 导出
+		// 确定最终的输出路径
 		outputPath := filepath.Join(folderName, fmt.Sprintf("%s_%s.%s", fileNamePrefix, time.Now().Format("20060102_150405"), format))
+
+		// 如果需要，先导出图片
+		if exportImages {
+			imageDir := filepath.Join(filepath.Dir(outputPath), filepath.Base(outputPath[:len(outputPath)-len(filepath.Ext(outputPath))]))
+			a.QueueUpdateDraw(func() {
+				modal.SetText("正在导出图片...")
+			})
+			if err := export.ExportChatImages(messages, imageDir, a.ctx, func(current, total int) {
+				percentage := float64(current) / float64(total) * 100
+				width := 20 // 进度条宽度
+				completed := int(float64(width) * float64(current) / float64(total))
+				remaining := width - completed
+
+				// 构建进度条
+				progressBar := fmt.Sprintf("正在导出图片\n\n[%s%s] %.1f%%\n(%d/%d)",
+					strings.Repeat("█", completed),
+					strings.Repeat("░", remaining),
+					percentage,
+					current,
+					total)
+
+				a.QueueUpdateDraw(func() {
+					modal.SetText(progressBar)
+				})
+			}); err != nil {
+				a.QueueUpdateDraw(func() {
+					modal.SetText("导出图片失败: " + err.Error())
+					modal.AddButtons([]string{"OK"})
+					modal.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
+						a.mainPages.RemovePage("modal")
+					})
+					a.SetFocus(modal)
+				})
+				return
+			}
+		}
+
+		// 导出消息
 		if err := export.ExportMessages(messages, outputPath, format, func(current, total int) {
 			percentage := float64(current) / float64(total) * 100
 			width := 20 // 进度条宽度
@@ -1126,7 +1186,13 @@ func (a *App) performExport(format string, talker string) {
 
 		// 在主线程中更新UI
 		a.QueueUpdateDraw(func() {
-			modal.SetText(fmt.Sprintf("导出成功\n文件已保存到: %s", outputPath))
+			text := fmt.Sprintf("导出成功\n文件已保存到: %s", outputPath)
+			if exportImages {
+				// 文件夹名称与json文件名相同
+				imageDir := strings.TrimSuffix(outputPath, filepath.Ext(outputPath))
+				text += fmt.Sprintf("\n图片已保存到: %s", imageDir)
+			}
+			modal.SetText(text)
 			modal.AddButtons([]string{"OK"})
 			modal.SetDoneFunc(func(buttonIndex int, buttonLabel string) {
 				a.mainPages.RemovePage("modal")
@@ -1164,7 +1230,7 @@ func (a *App) selectTalkerForSelfExport() {
 		// 在主线程中创建选择界面
 		a.QueueUpdateDraw(func() {
 			a.mainPages.RemovePage("modal")
-			
+
 			// 创建一个列表用于选择联系人
 			list := tview.NewList().
 				ShowSecondaryText(false).
@@ -1197,7 +1263,7 @@ func (a *App) selectTalkerForSelfExport() {
 
 			// 添加"全部聊天记录"选项
 			list.AddItem("全部聊天记录", "", 0, nil)
-			
+
 			// 添加所有联系人
 			for _, contact := range contacts.Items {
 				name := contact.Remark
@@ -1225,13 +1291,13 @@ func (a *App) selectTalkerForSelfExport() {
 						a.SetFocus(list)
 					}
 				})
-			
+
 			// 添加搜索功能
 			searchField.SetChangedFunc(func(text string) {
 				list.Clear()
 				// 添加"全部聊天记录"选项
 				list.AddItem("全部聊天记录", "", 0, nil)
-				
+
 				// 根据搜索文本过滤联系人
 				filteredContacts := make([]*model.Contact, 0)
 				if text == "" {
@@ -1247,14 +1313,14 @@ func (a *App) selectTalkerForSelfExport() {
 						if name == "" {
 							name = contact.UserName
 						}
-						
+
 						// 检查是否匹配搜索文本
 						if strings.Contains(name, text) || strings.Contains(contact.UserName, text) {
 							filteredContacts = append(filteredContacts, contact)
 						}
 					}
 				}
-				
+
 				// 添加过滤后的联系人
 				for _, contact := range filteredContacts {
 					name := contact.Remark
@@ -1266,12 +1332,12 @@ func (a *App) selectTalkerForSelfExport() {
 					}
 					list.AddItem(name, contact.UserName, 0, nil)
 				}
-				
+
 				// 添加返回选项
 				list.AddItem("<返回>", "", 0, func() {
 					a.mainPages.RemovePage("contactSelector")
 				})
-				
+
 				// 默认选中第一项
 				list.SetCurrentItem(0)
 			})
@@ -1341,7 +1407,7 @@ func (a *App) performSelfExport(format string, talker string) {
 			} else {
 				actionText = "正在获取消息..."
 			}
-			
+
 			progressBar := fmt.Sprintf("正在导出聊天记录\n\n%s\n[%s%s] %.1f%%\n(%d/%d)",
 				actionText,
 				strings.Repeat("█", completed),

@@ -26,6 +26,11 @@ go.work.sum
 # 忽略所有导出的聊天记录数据
 *.json
 *.csv
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.zip
 
 
 # 忽略 chatlog 自动生成的工作目录

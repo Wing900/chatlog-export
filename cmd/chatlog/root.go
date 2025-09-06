@@ -12,10 +12,13 @@ func init() {
 	cobra.MousetrapHelpText = ""
 
 	rootCmd.PersistentFlags().BoolVar(&Debug, "debug", false, "debug")
-	rootCmd.PersistentPreRun = initLog
 }
 
 func Execute() {
+	// Initialize the logger here to ensure it's always called
+	// before any command execution.
+	cobra.OnInitialize(InitLog)
+
 	if err := rootCmd.Execute(); err != nil {
 		log.Err(err).Msg("command execution failed")
 	}
@@ -30,8 +33,7 @@ var rootCmd = &cobra.Command{
 	CompletionOptions: cobra.CompletionOptions{
 		HiddenDefaultCmd: true,
 	},
-	PreRun: initTuiLog,
-	Run:    Root,
+	Run: Root,
 }
 
 func Root(cmd *cobra.Command, args []string) {

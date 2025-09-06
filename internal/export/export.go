@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/rs/zerolog/log"
+	"github.com/sjzar/chatlog/internal/chatlog/ctx"
 	"github.com/sjzar/chatlog/internal/model"
 	"github.com/sjzar/chatlog/internal/wechatdb"
+	"github.com/sjzar/chatlog/pkg/util/dat2img"
 )
 
 // ProgressCallback 用于报告导出进度的回调函数
@@ -190,6 +193,7 @@ type MessageWithDesc struct {
 	Content    string                 `json:"content"`
 	Contents   map[string]interface{} `json:"contents,omitempty"`
 	TypeDesc   string                 `json:"typeDesc"`
+	ImagePath  string                 `json:"imagePath,omitempty"`
 }
 
 func exportJSON(messages []*model.Message, outputPath string, progress ProgressCallback) error {
@@ -197,16 +201,18 @@ func exportJSON(messages []*model.Message, outputPath string, progress ProgressC
 	if err != nil {
 		return err
 	}
+	// Use defer as a safeguard, but we'll close manually.
 	defer file.Close()
 
 	total := len(messages)
 	messagesWithDesc := make([]MessageWithDesc, total)
 
-	// 批量处理消息，每100条更新一次进度
+	// Batch processing setup
 	batchSize := 100
 	lastUpdate := time.Now()
 
 	for i, msg := range messages {
+		imagePath, _ := msg.Contents["imagePath"].(string)
 		messagesWithDesc[i] = MessageWithDesc{
 			Seq:        msg.Seq,
 			Time:       msg.Time,
@@ -221,23 +227,37 @@ func exportJSON(messages []*model.Message, outputPath string, progress ProgressC
 			Content:    msg.Content,
 			Contents:   msg.Contents,
 			TypeDesc:   GetMessageTypeDesc(msg),
+			ImagePath:  imagePath,
 		}
 
-		// 每处理batchSize条消息或距离上次更新超过100ms才更新进度
 		if progress != nil && (i%batchSize == 0 || time.Since(lastUpdate) > 100*time.Millisecond) {
 			progress(i+1, total)
 			lastUpdate = time.Now()
 		}
 	}
 
-	// 确保最后更新一次进度
 	if progress != nil {
 		progress(total, total)
 	}
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(messagesWithDesc)
+	if err := encoder.Encode(messagesWithDesc); err != nil {
+		return fmt.Errorf("failed to encode messages to JSON: %w", err)
+	}
+
+	// Explicitly sync to disk to prevent truncation on premature exit.
+	if err := file.Sync(); err != nil {
+		return fmt.Errorf("failed to sync JSON file to disk: %w", err)
+	}
+
+	// Explicitly close the file.
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("failed to close JSON file: %w", err)
+	}
+
+	log.Info().Str("path", outputPath).Msg("Successfully exported messages to JSON file.")
+	return nil
 }
 
 func exportCSV(messages []*model.Message, outputPath string, progress ProgressCallback) error {
@@ -290,5 +310,82 @@ func exportCSV(messages []*model.Message, outputPath string, progress ProgressCa
 		progress(total, total)
 	}
 
+	return nil
+}
+
+// ExportChatImages 导出图片文件
+func ExportChatImages(messages []*model.Message, outputDir string, appCtx *ctx.Context, progress ProgressCallback) error {
+	log.Trace().Msg("Starting image export process.")
+	db, err := wechatdb.New(appCtx.WorkDir, appCtx.Platform, appCtx.Version)
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	defer db.Close()
+
+	// 创建导出目录
+	log.Trace().Str("directory", outputDir).Msg("Attempting to create image export directory")
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("failed to create image directory: %w", err)
+	}
+	log.Trace().Str("dir", outputDir).Msg("Image export directory created.")
+
+	var imageMessages []*model.Message
+	for _, msg := range messages {
+		if msg.Type == TypeImage {
+			imageMessages = append(imageMessages, msg)
+		}
+	}
+	log.Trace().Int("count", len(imageMessages)).Msg("Found image messages.")
+
+	total := len(imageMessages)
+	for i, msg := range imageMessages {
+		md5, ok := msg.Contents["md5"].(string)
+		if !ok || md5 == "" {
+			log.Warn().Int64("seq", msg.Seq).Msg("Image message has no md5.")
+			continue
+		}
+		log.Trace().Int64("seq", msg.Seq).Str("md5", md5).Msg("Processing image message.")
+
+		media, err := db.GetMedia("image", md5)
+		if err != nil {
+			log.Warn().Str("md5", md5).Err(err).Msg("Failed to get media info from db.")
+			continue
+		}
+		log.Trace().Str("md5", md5).Str("path", media.Path).Msg("Got media info.")
+
+		srcPath := filepath.Join(appCtx.DataDir, media.Path)
+		encryptedData, err := os.ReadFile(srcPath)
+		if err != nil {
+			log.Warn().Str("path", srcPath).Err(err).Msg("Failed to read encrypted image file.")
+			continue
+		}
+		log.Trace().Str("path", srcPath).Int("size", len(encryptedData)).Msg("Read encrypted image file.")
+
+		decryptedData, ext, err := dat2img.Dat2Image(encryptedData)
+		if err != nil {
+			log.Warn().Str("path", srcPath).Err(err).Msg("Failed to decrypt image.")
+			continue
+		}
+		log.Trace().Str("path", srcPath).Int("size", len(decryptedData)).Str("ext", ext).Msg("Decrypted image.")
+
+		// 使用MD5作为文件名
+		fileName := fmt.Sprintf("%s.%s", md5, ext)
+		destPath := filepath.Join(outputDir, fileName)
+
+		if err := os.WriteFile(destPath, decryptedData, 0644); err != nil {
+			log.Error().Str("path", destPath).Err(err).Msg("Failed to save decrypted image.")
+			continue
+		}
+		log.Trace().Str("path", destPath).Msg("Saved decrypted image.")
+
+		// 在JSON中我们只希望使用文件名
+		msg.SetContent("imagePath", fileName)
+
+		if progress != nil {
+			progress(i+1, total)
+		}
+	}
+
+	log.Trace().Msg("Image export process finished.")
 	return nil
 }
